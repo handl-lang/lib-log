@@ -1,0 +1,10 @@
+-- lib-log: modules this package provides (entry defaults to
+-- src/index.hnl; N modules resolve to src/<name>/index.hnl).
+{
+  modules: ["log"],
+  name: "log",
+  description: "Runtime-agnostic leveled logging contract — levels, structured attrs, child loggers.",
+  license: "MIT",
+  keywords: ["log", "logging", "levels", "attrs", "contract", "stdlib"],
+  homepage: "https://github.com/handl-lang/lib-log",
+}

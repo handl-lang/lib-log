@@ -1,0 +1,128 @@
+--- log -- runtime-agnostic leveled logging contract.
+---
+--- This is the port side of the port/impl split (the `posix`/`stdio`
+--- convention): every arrow below is a *signature + doc*, no
+--- implementation. Backends (`log-c` over libc stdio, `log-js` over the
+--- JS console) export arrows of these types; the contract fixes the
+--- *semantics* — levels, filtering, structured attrs, child loggers —
+--- while each backend owns its rendering and sink.
+---
+--- Model (aligned with Go `log/slog`, pino/winston, syslog severity):
+---
+---   Level    one of "trace" "debug" "info" "warn" "error" "fatal",
+---            ordered trace < debug < info < warn < error < fatal.
+---            `level_rank` maps a level to 0..5; anything else ranks -1
+---            and is rejected by `log`/the per-level arrows.
+---   Attrs    a record `{ key: Value }` of structured key-value pairs,
+---            or `null` for none. Keys are Strings; values are any
+---            handl Value — backends render them into their output
+---            format (text `key=value` for `log-c`, a JSON object for
+---            `log-js`).
+---   Logger   an opaque record `{ min_level: Level, attrs: Attrs }` —
+---            the logger's effective minimum level plus the attrs every
+---            record it emits carries. Backends MAY add fields
+---            (sink handles, formatter state); `child`/`with_level`
+---            MUST preserve fields they do not understand.
+---
+--- Semantics every backend MUST honour:
+---
+---   * `make(min, attrs)` builds a logger; `attrs` may be null.
+---   * `with_level(l, lvl)` returns a logger equal to `l` except its
+---     `min_level` — loggers are immutable values, nothing mutates.
+---   * `child(l, attrs)` returns a logger whose emitted records carry
+---     `l`'s attrs MERGED with `attrs`; on a key collision the child's
+---     (right-hand) value wins — the slog "later attrs win" rule.
+---     `child` is pure: it performs no I/O.
+---   * `should_log(l, lvl)` is the pure filter: true iff
+---     `level_rank(lvl) >= level_rank(l.min_level)`. An unknown level
+---     ranks -1, so it never passes a filter.
+---   * `log(l, lvl, msg, attrs)` emits one record at `lvl` carrying
+---     `l.attrs` merged with `attrs` (event attrs win on collision),
+---     iff `should_log` holds. `msg` is a String. When the record is
+---     filtered out the call is a no-op that still returns Unit.
+---   * The per-level arrows `trace`/`debug`/`info`/`warn`/`error`/
+---     `fatal` are exactly `log` with the level fixed.
+---   * `format(ts, lvl, msg, attrs)` renders the canonical text line —
+---     `"LEVEL ISO-8601 message key=value ..."` — where `ts` is the
+---     backend-supplied timestamp string. It is pure and exists so
+---     tests (and consumers wanting one canonical spelling) share a
+---     single rendering; `log` implementations SHOULD build their
+---     output through it.
+---   * `flush(l)` forces pending output to the sink. Backends whose
+---     sink is unbuffered (stderr, console.*) make it a no-op but MUST
+---     still provide it.
+---
+--- Effect discipline: `~[1]~>` marks every arrow that reaches a sink
+--- (stderr write, console call). `make`/`with_level`/`child`/
+--- `should_log`/`level_rank`/`format` are pure (`~>`).
+---
+--- Failure convention: an unrecognised `Level` raises
+--- `log: unknown level '<name>'` (the `*-c` `error.raise` convention);
+--- sink failures raise `log: <op>: <cause>`. Levels never degrade
+--- silently.
+
+from "type" import { Unit }
+
+-- ---------------------------------------------------------------------------
+-- Construction / derivation (pure)
+-- ---------------------------------------------------------------------------
+
+--- make(min, attrs): a logger emitting records at `min` or above,
+--- carrying `attrs` on every record. `attrs` is a record or null.
+export make: (Level, Attrs) ~> Logger
+
+--- with_level(l, lvl): `l` with its minimum level replaced. Pure —
+--- returns a new logger value; the original is unchanged.
+export with_level: (Logger, Level) ~> Logger
+
+--- child(l, attrs): `l` plus `attrs` merged into its carried attrs
+--- (child keys win on collision). Pure — no I/O. Chains: each `child`
+--- sees the accumulated attrs of its parent.
+export child: (Logger, Attrs) ~> Logger
+
+-- ---------------------------------------------------------------------------
+-- Levels
+-- ---------------------------------------------------------------------------
+
+--- level_rank(lvl): 0 (trace) .. 5 (fatal), or -1 for an unrecognised
+--- level string. The single ordering every comparison goes through.
+export level_rank: Level ~> Int
+
+--- should_log(l, lvl): true iff `lvl` passes `l`'s minimum level —
+--- `level_rank(lvl) >= level_rank(l.min_level)`. Pure.
+export should_log: (Logger, Level) ~> Bool
+
+-- ---------------------------------------------------------------------------
+-- Emission (effectful)
+-- ---------------------------------------------------------------------------
+
+--- log(l, lvl, msg, attrs): emit one record at `lvl` — message `msg`,
+--- attrs = `l.attrs` merged with `attrs` (event attrs win) — iff
+--- `should_log(l, lvl)`. Filtered records are dropped silently (that is
+--- the point of a level). `attrs` may be null.
+export log: (Logger, Level, String, Attrs) ~[1]~> Unit
+
+--- Per-level conveniences — `log` with the level fixed. `attrs` may be
+--- null.
+export trace: (Logger, String, Attrs) ~[1]~> Unit
+export debug: (Logger, String, Attrs) ~[1]~> Unit
+export info: (Logger, String, Attrs) ~[1]~> Unit
+export warn: (Logger, String, Attrs) ~[1]~> Unit
+export error: (Logger, String, Attrs) ~[1]~> Unit
+export fatal: (Logger, String, Attrs) ~[1]~> Unit
+
+-- ---------------------------------------------------------------------------
+-- Rendering / flushing
+-- ---------------------------------------------------------------------------
+
+--- format(ts, lvl, msg, attrs): the canonical text line
+--- `"LEVEL ts msg key=value ..."` — level uppercased, `ts` the
+--- caller-supplied timestamp (ISO-8601 in the shipped backends), attrs
+--- rendered in record order as `key=value` with strings quoted only
+--- when they contain characters outside `[A-Za-z0-9_./:@+-]`.
+--- Pure — `log` implementations SHOULD route their line through it.
+export format: (String, Level, String, Attrs) ~> String
+
+--- flush(l): force pending output to the sink. No-op on unbuffered
+--- sinks; still part of the contract so buffered backends have a hook.
+export flush: (Logger) ~[1]~> Unit
