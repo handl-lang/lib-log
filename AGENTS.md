@@ -11,7 +11,7 @@ of these types.
 | --- | --- |
 | `src/index.hnl` | the .hnl contract — signatures + docs |
 | `pkg.hnl` | package manifest |
-| `scripts/hnl-gate.sh`, `ci.sh` | the gate / bupha entry |
+| `scripts/hnl-gate.sh`, `workflows/gate.yaml` | the gate / bupha entry |
 
 ## Contract
 
