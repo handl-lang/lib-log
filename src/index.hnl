@@ -100,16 +100,16 @@ export should_log: (Logger, Level) ~> Bool
 --- attrs = `l.attrs` merged with `attrs` (event attrs win) — iff
 --- `should_log(l, lvl)`. Filtered records are dropped silently (that is
 --- the point of a level). `attrs` may be null.
-export log: (Logger, Level, String, Attrs) ~[1]~> Unit
+export log: (Logger, Level, String, Attrs) ~>[1] Unit
 
 --- Per-level conveniences — `log` with the level fixed. `attrs` may be
 --- null.
-export trace: (Logger, String, Attrs) ~[1]~> Unit
-export debug: (Logger, String, Attrs) ~[1]~> Unit
-export info: (Logger, String, Attrs) ~[1]~> Unit
-export warn: (Logger, String, Attrs) ~[1]~> Unit
-export error: (Logger, String, Attrs) ~[1]~> Unit
-export fatal: (Logger, String, Attrs) ~[1]~> Unit
+export trace: (Logger, String, Attrs) ~>[1] Unit
+export debug: (Logger, String, Attrs) ~>[1] Unit
+export info: (Logger, String, Attrs) ~>[1] Unit
+export warn: (Logger, String, Attrs) ~>[1] Unit
+export error: (Logger, String, Attrs) ~>[1] Unit
+export fatal: (Logger, String, Attrs) ~>[1] Unit
 
 -- ---------------------------------------------------------------------------
 -- Rendering / flushing
@@ -125,4 +125,4 @@ export format: (String, Level, String, Attrs) ~> String
 
 --- flush(l): force pending output to the sink. No-op on unbuffered
 --- sinks; still part of the contract so buffered backends have a hook.
-export flush: (Logger) ~[1]~> Unit
+export flush: (Logger) ~>[1] Unit
